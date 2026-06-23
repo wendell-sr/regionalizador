@@ -28,6 +28,11 @@ import sys
 import time
 from pathlib import Path
 
+# Força UTF-8 no stdout/stderr (Windows PowerShell usa cp125 por padrão)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
@@ -71,33 +76,64 @@ def _which(cmd: str) -> bool:
     return which(cmd) is not None
 
 
-def install_deps(only: str | None = None) -> None:
-    """Instala deps do backend (pip) e/ou frontend (npm)."""
+def install_deps(only: str | None = None, force: bool = False) -> None:
+    """Instala deps do backend (pip) e/ou frontend (npm).
+
+    Se `force=False`, pula se já estiver instalado (checa com `pip show` / `node_modules`).
+    """
     if only != "frontend":
-        print(color("→ Instalando deps do backend (pip)...", BLUE))
+        print(color("→ Verificando deps do backend...", BLUE))
         py = find_venv_python(BACKEND) or sys.executable
-        subprocess.run(
-            [py, "-m", "pip", "install", "--upgrade", "pip"],
-            cwd=BACKEND,
-            check=True,
-        )
-        subprocess.run(
-            [py, "-m", "pip", "install", "-e", ".[dev]"],
-            cwd=BACKEND,
-            check=True,
-        )
-        print(color("✓ Backend OK", GREEN))
+        try:
+            result = subprocess.run(
+                [py, "-m", "pip", "show", "regionalizador-backend"],
+                cwd=BACKEND,
+                capture_output=True,
+                text=True,
+            )
+            already_installed = result.returncode == 0
+        except Exception:
+            already_installed = False
+
+        if already_installed and not force:
+            print(color("✓ Backend já instalado (use --install-backend para forçar)", GREEN))
+        else:
+            print(color("→ Instalando deps do backend (pip)...", BLUE))
+            # Mostra saída em tempo real (sem buffer)
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            result = subprocess.run(
+                [py, "-m", "pip", "install", "-e", ".[dev]"],
+                cwd=BACKEND,
+                env=env,
+            )
+            if result.returncode != 0:
+                print(color("✗ pip install falhou", RED))
+                sys.exit(1)
+            print(color("✓ Backend OK", GREEN))
+
     if only != "backend":
-        print(color("→ Instalando deps do frontend (npm)...", BLUE))
+        print(color("→ Verificando deps do frontend...", BLUE))
         if not _which("npm"):
             print(color("✗ npm não encontrado no PATH", RED))
             sys.exit(1)
-        subprocess.run(
-            ["npm", "install", "--legacy-peer-deps"],
-            cwd=FRONTEND,
-            check=True,
-        )
-        print(color("✓ Frontend OK", GREEN))
+        node_modules = FRONTEND / "node_modules"
+        if node_modules.exists() and not force:
+            print(color("✓ Frontend já instalado (use --install-frontend para forçar)", GREEN))
+        else:
+            print(color("→ Instalando deps do frontend (npm)...", BLUE))
+            env = os.environ.copy()
+            env["FORCE_COLOR"] = "1"
+            env["NPM_CONFIG_UPDATE_NOTIFIER"] = "false"
+            result = subprocess.run(
+                ["npm", "install", "--legacy-peer-deps", "--no-audit", "--no-fund"],
+                cwd=FRONTEND,
+                env=env,
+            )
+            if result.returncode != 0:
+                print(color("✗ npm install falhou", RED))
+                sys.exit(1)
+            print(color("✓ Frontend OK", GREEN))
 
 
 def start_backend(port: int) -> subprocess.Popen:
@@ -164,10 +200,10 @@ def main() -> None:
         "--install", action="store_true", help="Instala deps antes de iniciar"
     )
     parser.add_argument(
-        "--install-backend", action="store_true", help="Instala só deps do backend"
+        "--install-backend", action="store_true", help="Instala só deps do backend (força)"
     )
     parser.add_argument(
-        "--install-frontend", action="store_true", help="Instala só deps do frontend"
+        "--install-frontend", action="store_true", help="Instala só deps do frontend (força)"
     )
     parser.add_argument(
         "--port", type=int, default=8000, help="Porta do backend (default: 8000)"
