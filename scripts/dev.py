@@ -153,7 +153,7 @@ def install_deps(only: str | None = None, force: bool = False) -> None:
 
 
 def start_backend(port: int) -> subprocess.Popen:
-    py = find_venv_python(BACKEND)
+    py = find_venv_python(BACKEND) or sys.executable
     if py is None:
         print(color("⚠ venv do backend não encontrado, usando python do sistema", YELLOW))
         py = sys.executable
@@ -166,6 +166,8 @@ def start_backend(port: int) -> subprocess.Popen:
         [py, "-m", "uvicorn", "app.main:app", "--reload", "--port", str(port)],
         cwd=BACKEND,
         env=env,
+        # Permite que Ctrl+C no script mate o uvicorn (Windows)
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
     )
 
 
@@ -198,12 +200,12 @@ def wait_health(url: str, timeout: int = 30) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=1) as r:
+            with urllib.request.urlopen(url, timeout=2) as r:
                 if 200 <= r.status < 500:
                     return True
         except Exception:
             pass
-        time.sleep(0.5)
+        time.sleep(1.0)
     return False
 
 
