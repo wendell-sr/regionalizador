@@ -7,14 +7,16 @@ Uso:
     python scripts/dev.py --frontend   # só frontend
     python scripts/dev.py --install    # instala deps antes de iniciar
     python scripts/dev.py --port 9000  # custom port (default: 8000)
+    python scripts/dev.py --clean      # mata processos órfãos nas portas
     python scripts/dev.py --help       # help
 
 Comportamento:
     - Detecta Windows / Unix automaticamente
     - Ativa venv do backend se existir (./backend/.venv)
-    - Roda uvicorn com reload no backend
+    - Roda uvicorn no backend
     - Roda next dev no frontend
     - Encerramento limpo com Ctrl+C (mata ambos os processos)
+    - Detecta portas ocupadas e mata processos órfãos (--clean)
     - Cores ANSI em terminais que suportam
 """
 
@@ -90,6 +92,142 @@ def _resolve_cmd(name: str) -> str:
         if which(candidate):
             return candidate
     return name  # deixa o Popen falhar com erro claro
+
+
+def _is_port_in_use(port: int) -> bool:
+    """Retorna True se a porta estiver bindada.
+
+    No Windows, sockets em TIME_WAIT/zombie podem aparecer como "in use" mesmo
+    sem processo associado. Nestes casos, tentamos limpar via SO_REUSEADDR hack
+    ou reportamos como ocupada para o usuário decidir.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _port_owner_pid(port: int) -> int | None:
+    """Retorna o PID que está bindando a porta, ou None se não há owner real."""
+    if sys.platform != "win32":
+        return None
+    try:
+        r = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in r.stdout.splitlines():
+            if f":{port} " not in line and not line.endswith(f":{port}"):
+                continue
+            if "LISTENING" not in line:
+                continue
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            try:
+                pid = int(parts[-1])
+            except ValueError:
+                continue
+            if pid == 0:
+                return None
+            # Verifica se o PID existe
+            p = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if str(pid) in p.stdout:
+                return pid
+    except Exception:
+        pass
+    return None
+
+
+def _port_has_zombie(port: int) -> bool:
+    """Retorna True se a porta está bindada mas sem owner real (Windows TIME_WAIT/zombie)."""
+    return _is_port_in_use(port) and _port_owner_pid(port) is None
+
+
+def _kill_port(port: int) -> list[int]:
+    """Mata processos que estão usando a porta. Retorna PIDs mortos."""
+    killed: list[int] = []
+    if sys.platform == "win32":
+        # taskkill é mais permissivo que Stop-Process
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            for line in result.stdout.splitlines():
+                if f":{port} " not in line and not line.endswith(f":{port}"):
+                    continue
+                if "LISTENING" not in line and "ESTABLISHED" not in line:
+                    continue
+                parts = line.split()
+                if len(parts) < 5:
+                    continue
+                try:
+                    pid = int(parts[-1])
+                except ValueError:
+                    continue
+                if pid == 0 or pid in killed:
+                    continue
+                # taskkill /F = force, /T = mata child processes
+                r = subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if r.returncode == 0:
+                    killed.append(pid)
+        except Exception as e:
+            print(color(f"⚠ Erro ao matar porta {port}: {e}", YELLOW))
+    else:
+        # Unix: fuser/lsof
+        for cmd in (["fuser", "-k", f"{port}/tcp"], ["lsof", "-ti", f":{port}"]):
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                for line in r.stdout.strip().splitlines():
+                    line = line.strip()
+                    if line.isdigit():
+                        os.kill(int(line), signal.SIGTERM)
+                        killed.append(int(line))
+                if killed:
+                    break
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(color(f"⚠ Erro ao matar porta {port}: {e}", YELLOW))
+    return killed
+
+
+def clean_ports(ports: list[int]) -> None:
+    """Tenta liberar as portas matando processos órfãos."""
+    any_killed = False
+    for port in ports:
+        if _is_port_in_use(port):
+            print(color(f"→ Limpando porta {port}...", YELLOW))
+            killed = _kill_port(port)
+            if killed:
+                print(color(f"  ✓ PIDs mortos: {killed}", GREEN))
+                any_killed = True
+            else:
+                print(
+                    color(
+                        f"  ✗ Não foi possível liberar porta {port}. Feche o processo manualmente.",
+                        RED,
+                    )
+                )
+            time.sleep(0.5)
+    if not any_killed:
+        print(color("✓ Nenhum processo órfão encontrado", GREEN))
 
 
 def install_deps(only: str | None = None, force: bool = False) -> None:
@@ -240,6 +378,11 @@ def main() -> None:
     parser.add_argument(
         "--no-wait", action="store_true", help="Não espera healthcheck"
     )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Mata processos órfãos nas portas antes de iniciar",
+    )
     args = parser.parse_args()
 
     only_backend = args.backend
@@ -250,6 +393,112 @@ def main() -> None:
 
     run_backend = not only_frontend
     run_frontend = not only_backend
+
+    # Detectar portas ocupadas e (opcionalmente) matar processos órfãos
+    ports_to_check = []
+    if run_backend:
+        ports_to_check.append(args.port)
+    if run_frontend:
+        ports_to_check.append(args.frontend_port)
+
+    busy = [p for p in ports_to_check if _is_port_in_use(p)]
+    # Separar portas com owner real vs zombie (kernel TIME_WAIT no Windows)
+    has_real_owner = [p for p in busy if _port_owner_pid(p) is not None]
+    has_zombie = [p for p in busy if _port_owner_pid(p) is None]
+
+    if has_real_owner:
+        if args.clean:
+            print(
+                color(
+                    f"→ Matando processos órfãos em {has_real_owner}...",
+                    YELLOW,
+                )
+            )
+            clean_ports(has_real_owner)
+            still = [p for p in has_real_owner if _is_port_in_use(p)]
+            if still:
+                print(
+                    color(
+                        f"✗ Ainda ocupada(s) após cleanup: {still}",
+                        RED,
+                    )
+                )
+                sys.exit(1)
+        else:
+            print(
+                color(
+                    f"⚠ Porta(s) em uso: {has_real_owner} (com processo ativo).",
+                    YELLOW,
+                )
+            )
+            print(
+                color(
+                    "  Use --clean para matar processos órfãos automaticamente,",
+                    YELLOW,
+                )
+            )
+            print(
+                color(
+                    "  ou feche o processo manualmente (ex: Ctrl+C na sessão anterior).",
+                    YELLOW,
+                )
+            )
+            sys.exit(1)
+
+    if has_zombie:
+        # Sockets em TIME_WAIT sem processo (Windows bug). Esperar liberar.
+        print(
+            color(
+                f"⚠ Porta(s) {has_zombie} bindadas por socket órfão (TIME_WAIT).",
+                YELLOW,
+            )
+        )
+        print(color("  Isso acontece quando o Windows não libera o socket imediatamente após Ctrl+C.", YELLOW))
+        print(color("  Aguardando até 60s para o sistema liberar...", YELLOW))
+        for _ in range(60):
+            time.sleep(1)
+            still_zombie = [p for p in has_zombie if _port_owner_pid(p) is None and _is_port_in_use(p)]
+            if not still_zombie:
+                print(color("✓ Portas liberadas", GREEN))
+                break
+        else:
+            print(
+                color(
+                    "✗ TIME_WAIT não liberou em 60s. Reiniciando pode ajudar.",
+                    RED,
+                )
+            )
+            print(
+                color(
+                    "  Soluções manuais (escolha uma):",
+                    YELLOW,
+                )
+            )
+            print(
+                color(
+                    "    1) Reiniciar o serviço Winsock (PowerShell como Admin):",
+                    YELLOW,
+                )
+            )
+            print(
+                color(
+                    "       netsh winsock reset",
+                    YELLOW,
+                )
+            )
+            print(
+                color(
+                    "    2) Aguardar ~4 minutos (default TIME_WAIT no Windows)",
+                    YELLOW,
+                )
+            )
+            print(
+                color(
+                    "    3) Usar uma porta diferente: python scripts/dev.py --port 8001",
+                    YELLOW,
+                )
+            )
+            sys.exit(1)
 
     if args.install:
         if only_backend:
