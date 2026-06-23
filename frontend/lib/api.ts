@@ -1,6 +1,9 @@
 import type { FeatureCollection } from "./geojson";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+// Todas as chamadas passam pelo Next.js rewrite em next.config.mjs
+// (/api/backend/* → http://localhost:8000/*). Isso evita CORS em dev
+// e é automaticamente handled em produção com mesma origem.
+const API_URL = "/api/backend";
 
 export type JobStatus = {
   id: string;
