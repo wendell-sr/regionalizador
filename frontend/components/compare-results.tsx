@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles, Download } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import {
   type AlgorithmMetrics,
   type CompareResult,
@@ -21,11 +21,12 @@ const ALGO_LABELS: Record<string, string> = {
 };
 
 interface Props {
-  formData: FormData;
+  formData?: FormData;
+  compareId?: string;
   onUseAlgorithm: (algo: "kmeans" | "kmedoids" | "dbscan") => void;
 }
 
-export function CompareResults({ formData, onUseAlgorithm }: Props) {
+export function CompareResults({ formData, compareId, onUseAlgorithm }: Props) {
   const [status, setStatus] = useState<CompareStatus | null>(null);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +51,27 @@ export function CompareResults({ formData, onUseAlgorithm }: Props) {
     return () => clearTimeout(t);
   }, [status]);
 
+  // Modo 1: recebe compareId já criado (página /jobs/[id]/compare)
+  useEffect(() => {
+    if (!compareId) return;
+    const id = compareId;
+    let cancelled = false;
+    async function start() {
+      try {
+        const s = await getCompareStatus(id);
+        if (!cancelled) setStatus(s);
+      } catch (e) {
+        if (!cancelled) setError(String(e));
+      }
+    }
+    start();
+    return () => {
+      cancelled = true;
+    };
+  }, [compareId]);
+
   async function handleCompare() {
+    if (!formData) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -75,17 +96,23 @@ export function CompareResults({ formData, onUseAlgorithm }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={handleCompare} disabled={submitting} data-testid="compare-button">
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Iniciando...
-              </>
-            ) : (
-              "Iniciar comparativo"
-            )}
-          </Button>
-          {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+          {formData ? (
+            <>
+              <Button onClick={handleCompare} disabled={submitting} data-testid="compare-button">
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Iniciando...
+                  </>
+                ) : (
+                  "Iniciar comparativo"
+                )}
+              </Button>
+              {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aguardando configuração...</p>
+          )}
         </CardContent>
       </Card>
     );

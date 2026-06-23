@@ -625,6 +625,51 @@ async def create_compare_job(
     return _compare_to_response(db.get(CompareJob, job_id))
 
 
+@app.post("/jobs/{job_id}/compare", response_model=CompareStatus)
+async def compare_existing_job(
+    job_id: str,
+    background: BackgroundTasks,
+    n_clusters_hint: int = Form(default=5),
+) -> CompareStatus:
+    """Roda comparativo de algoritmos reutilizando os arquivos de um job existente.
+
+    Cria um CompareJob separado que referencia os mesmos arquivos do job original.
+    """
+    with SessionLocal() as db:
+        original = db.get(Job, job_id)
+        if not original:
+            raise HTTPException(404, "Job não encontrado")
+        city_name = (original.params or {}).get("city_name", "")
+
+    src = Path(settings.storage_dir) / job_id
+    if not (src / "schools.xlsx").exists() or not (src / "participants.xlsx").exists():
+        raise HTTPException(400, "Arquivos do job não encontrados para comparar")
+
+    new_id = str(uuid.uuid4())
+    storage = Path(settings.storage_dir) / "compare" / new_id
+    storage.mkdir(parents=True, exist_ok=True)
+    (storage / "schools.xlsx").write_bytes((src / "schools.xlsx").read_bytes())
+    (storage / "participants.xlsx").write_bytes((src / "participants.xlsx").read_bytes())
+    (storage / "shapefile.zip").write_bytes((src / "shapefile.zip").read_bytes())
+
+    with SessionLocal() as db:
+        db.add(
+            CompareJob(
+                id=new_id,
+                status="pending",
+                params={
+                    "city_name": city_name,
+                    "n_clusters_hint": n_clusters_hint,
+                    "source_job_id": job_id,
+                },
+            )
+        )
+        db.commit()
+
+    background.add_task(_run_compare_job, new_id)
+    return _compare_to_response(db.get(CompareJob, new_id))
+
+
 def _run_compare_job(job_id: str) -> None:
     try:
         storage = Path(settings.storage_dir) / "compare" / job_id

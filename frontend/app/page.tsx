@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { RegionalizationForm } from "@/components/regionalization-form";
 import { GeocodingForm } from "@/components/geocoding-form";
-import { FormWithTabs } from "@/components/form-with-tabs";
 
 export default function Home() {
   return (
@@ -15,10 +15,23 @@ export default function Home() {
           <Link href="/jobs">Meus jobs</Link>
         </Button>
       </header>
-      <div className="grid gap-6 md:grid-cols-2">
-        <FormWithTabs />
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Regionalização</h2>
+        <p className="text-sm text-muted-foreground">
+          Envie shapefile, escolas e participantes. Acompanhe o resultado com mapa interativo.
+        </p>
+        <RegionalizationForm />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Geocoding de Escolas/Participantes</h2>
+        <p className="text-sm text-muted-foreground">
+          Resolve CEP ou endereço em lat/lon antes de gerar o XLSX. Útil quando o arquivo original
+          não tem coordenadas.
+        </p>
         <GeocodingForm />
-      </div>
+      </section>
     </main>
   );
 }
