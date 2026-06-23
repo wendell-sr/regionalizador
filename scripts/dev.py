@@ -76,6 +76,22 @@ def _which(cmd: str) -> bool:
     return which(cmd) is not None
 
 
+def _resolve_cmd(name: str) -> str:
+    """Resolve o executável correto no Windows (.cmd, .bat, .exe)."""
+    from shutil import which
+
+    if sys.platform != "win32":
+        return name
+    found = which(name)
+    if found:
+        return found
+    for ext in (".cmd", ".bat", ".exe", ".ps1"):
+        candidate = name + ext
+        if which(candidate):
+            return candidate
+    return name  # deixa o Popen falhar com erro claro
+
+
 def install_deps(only: str | None = None, force: bool = False) -> None:
     """Instala deps do backend (pip) e/ou frontend (npm).
 
@@ -99,7 +115,6 @@ def install_deps(only: str | None = None, force: bool = False) -> None:
             print(color("✓ Backend já instalado (use --install-backend para forçar)", GREEN))
         else:
             print(color("→ Instalando deps do backend (pip)...", BLUE))
-            # Mostra saída em tempo real (sem buffer)
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             result = subprocess.run(
@@ -125,8 +140,9 @@ def install_deps(only: str | None = None, force: bool = False) -> None:
             env = os.environ.copy()
             env["FORCE_COLOR"] = "1"
             env["NPM_CONFIG_UPDATE_NOTIFIER"] = "false"
+            npm_cmd = _resolve_cmd("npm")
             result = subprocess.run(
-                ["npm", "install", "--legacy-peer-deps", "--no-audit", "--no-fund"],
+                [npm_cmd, "install", "--legacy-peer-deps", "--no-audit", "--no-fund"],
                 cwd=FRONTEND,
                 env=env,
             )
@@ -160,12 +176,18 @@ def start_frontend(port: int = 3000) -> subprocess.Popen:
     env = os.environ.copy()
     env["NEXT_PUBLIC_API_URL"] = f"http://localhost:8000"
     env["BROWSER"] = "none"
+    env["FORCE_COLOR"] = "1"
+    npm_cmd = _resolve_cmd("npm")
 
     print(color(f"→ Frontend: http://localhost:{port}", MAGENTA))
+    # No Windows, .cmd não pode ser executado sem shell=True
+    use_shell = sys.platform == "win32"
     return subprocess.Popen(
-        ["npm", "run", "dev", "--", "-p", str(port)],
+        [npm_cmd, "run", "dev", "--", "-p", str(port)] if not use_shell
+        else f'"{npm_cmd}" run dev -- -p {port}',
         cwd=FRONTEND,
         env=env,
+        shell=use_shell,
     )
 
 
