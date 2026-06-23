@@ -1,0 +1,27 @@
+name: Constitution
+
+on:
+  push:
+    paths:
+      - "**/*.py"
+      - "**/*.tsx"
+      - "**/*.ts"
+      - ".specify/**"
+      - "frontend/package.json"
+      - "backend/pyproject.toml"
+  pull_request:
+
+jobs:
+  check:
+    name: Constitution Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run constitution check
+        run: python .specify/scripts/check_constitution.py

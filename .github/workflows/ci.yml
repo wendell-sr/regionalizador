@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Test (pytest)
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          STORAGE_DIR: ./storage
+        run: |
+          pytest --basetemp=/tmp/pytest-basetemp -q
+        shell: bash
+
+  frontend:
+    name: Frontend (Node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Type check + build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npm run build
+
+      - name: Test (vitest)
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npm test
+
+  sdd:
+    name: SDD Validators
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate specs
+        run: |
+          for d in specs/*/; do
+            echo "=== $d"
+            python .specify/scripts/validate_spec.py "$d"
+          done
+
+      - name: Check constitution
+        run: python .specify/scripts/check_constitution.py
+
+  status:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, sdd]
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "## CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ needs.backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.frontend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SDD | ${{ needs.sdd.result }} |" >> $GITHUB_STEP_SUMMARY

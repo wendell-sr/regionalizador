@@ -1,0 +1,86 @@
+openapi: 3.1.0
+info:
+  title: Regionalizador API
+  version: 0.5.0
+  description: |
+    Mudanças desde 004: novos endpoints para geocoding assíncrono (spec 005).
+servers:
+  - url: http://localhost:8000
+paths:
+  /jobs/geocode:
+    post:
+      summary: Cria job de geocoding (spec 005)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                has_cep: { type: boolean, default: true }
+                has_address: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Job criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeocodingJobStatus" }
+  /jobs/{id}/geocoded:
+    get:
+      summary: Resultado do geocoding
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Lista de itens geocodificados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index: { type: integer }
+                        input: { type: string }
+                        lat: { type: number, nullable: true }
+                        lon: { type: number, nullable: true }
+                        source: { type: string, nullable: true, enum: [awesomeapi, nominatim, cache] }
+                        success: { type: boolean }
+  /jobs/{id}/files/geocoded.xlsx:
+    get:
+      summary: XLSX corrigido
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Arquivo XLSX
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: {}
+  /jobs/{id}/files/failed_only.xlsx:
+    get:
+      summary: Apenas linhas não resolvidas
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: XLSX
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: {}
+components:
+  schemas:
+    GeocodingJobStatus:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [pending, processing, done, failed] }
+        total: { type: integer }
+        processed: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        message: { type: string }

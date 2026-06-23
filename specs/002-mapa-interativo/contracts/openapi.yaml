@@ -1,0 +1,125 @@
+openapi: 3.1.0
+info:
+  title: Regionalizador API
+  version: 0.2.0
+  description: |
+    Especificação do contrato HTTP.
+    Mudanças desde 001: novo endpoint `GET /jobs/{id}/geojson` (spec 002).
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /jobs:
+    post:
+      summary: Cria job de regionalização
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [shapefile, schools, participants, city_name, n_regions]
+              properties:
+                shapefile: { type: string, format: binary }
+                schools: { type: string, format: binary }
+                participants: { type: string, format: binary }
+                city_name: { type: string }
+                n_regions: { type: integer, minimum: 1, maximum: 50 }
+                max_radius_km: { type: number, nullable: true }
+                capacity_factor: { type: number, minimum: 1.0, maximum: 2.0, default: 1.2 }
+                target_crs: { type: string, default: EPSG:31983 }
+      responses:
+        "200":
+          description: Job criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+  /jobs/{job_id}:
+    get:
+      summary: Status do job
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+        "404": { description: Não encontrado }
+  /jobs/{job_id}/files/{name}:
+    get:
+      summary: Download de artefato
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string } }
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Arquivo
+          content:
+            application/octet-stream: {}
+  /jobs/{job_id}/geojson:
+    get:
+      summary: GeoJSON do resultado (spec 002)
+      description: |
+        Retorna FeatureCollection com 4 camadas:
+        - `region` (Polygon) — polígono da região
+        - `school` (Point) — escola com `region_id`
+        - `participant` (Point) — candidato
+        - `city` (Polygon) — contorno do município
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string } }
+        - { name: simplify, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 }, description: "Reduz pontos de participantes (1 = todos, 10 = 1 a cada 10)" }
+      responses:
+        "200":
+          description: GeoJSON FeatureCollection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [type, features]
+                properties:
+                  type: { type: string, enum: [FeatureCollection] }
+                  features:
+                    type: array
+                    items:
+                      type: object
+                      required: [type, geometry, properties]
+                      properties:
+                        type: { type: string, enum: [Feature] }
+                        geometry:
+                          oneOf:
+                            - { type: object }
+                            - { type: null }
+                        properties:
+                          type: object
+                          required: [layer]
+                          properties:
+                            layer:
+                              type: string
+                              enum: [region, school, participant, city]
+                            region_id: { type: integer, nullable: true }
+                            status: { type: string, nullable: true }
+                            name: { type: string, nullable: true }
+                            capacity: { type: integer, nullable: true }
+                            qty: { type: integer, nullable: true }
+        "400": { description: Job não está em status `done` }
+        "404": { description: Job não encontrado }
+components:
+  schemas:
+    JobStatus:
+      type: object
+      properties:
+        id: { type: string }
+        status:
+          type: string
+          enum: [pending, loading, geocoding, clustering, exporting, done, failed]
+        progress: { type: number, minimum: 0, maximum: 1 }
+        message: { type: string }
+        metrics:
+          type: object
+          additionalProperties: true

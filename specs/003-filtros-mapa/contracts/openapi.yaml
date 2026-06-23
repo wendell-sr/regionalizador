@@ -1,0 +1,10 @@
+openapi: 3.1.0
+info:
+  title: Regionalizador API
+  version: 0.3.0
+  description: |
+    Mudanças desde 002: nenhum endpoint novo.
+    Spec 003 é puramente frontend (filtros client-side).
+servers:
+  - url: http://localhost:8000
+paths: {}

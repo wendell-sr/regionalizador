@@ -1,0 +1,70 @@
+openapi: 3.1.0
+info:
+  title: Regionalizador API
+  version: 0.6.0
+  description: |
+    Mudanças desde 005: novos endpoints para comparativo de algoritmos ML (spec 006).
+servers:
+  - url: http://localhost:8000
+paths:
+  /jobs/compare:
+    post:
+      summary: Compara KMeans/K-Medoids/DBSCAN (spec 006)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [shapefile, schools, participants, city_name]
+              properties:
+                shapefile: { type: string, format: binary }
+                schools: { type: string, format: binary }
+                participants: { type: string, format: binary }
+                city_name: { type: string }
+                n_clusters_hint: { type: integer, default: 5, minimum: 2, maximum: 15 }
+      responses:
+        "200":
+          description: Job criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompareStatus" }
+        "400":
+          description: N < 50 ou cidade não encontrada
+  /jobs/{id}/compare:
+    get:
+      summary: Resultado da comparação
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Métricas por algoritmo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  winner: { type: string, enum: [kmeans, kmedoids, dbscan] }
+                  n_participants: { type: integer }
+                  algorithms:
+                    type: array
+                    items: { $ref: "#/components/schemas/AlgorithmMetrics" }
+        "400": { description: Job não está em status `done` }
+components:
+  schemas:
+    CompareStatus:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [pending, processing, done, failed] }
+        progress: { type: number }
+        message: { type: string }
+    AlgorithmMetrics:
+      type: object
+      properties:
+        algorithm: { type: string, enum: [kmeans, kmedoids, dbscan] }
+        n_clusters: { type: integer }
+        n_noise: { type: integer, default: 0 }
+        silhouette: { type: number, nullable: true }
+        inertia: { type: number, nullable: true }
+        runtime_ms: { type: integer }
