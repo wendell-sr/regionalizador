@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -30,6 +30,44 @@ function FitBounds({ bounds }: { bounds: L.LatLngBoundsExpression | null }) {
     if (bounds) map.fitBounds(bounds, { padding: [20, 20] });
   }, [map, bounds]);
   return null;
+}
+
+interface LeafletMapProps {
+  jobId: string;
+  children: React.ReactNode;
+}
+
+function LeafletMap({ jobId, children }: LeafletMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup: remover instância do Leaflet do container
+      if (containerRef.current) {
+        const mapInstance = (containerRef.current as any)._leaflet_map;
+        if (mapInstance) {
+          mapInstance.remove();
+        }
+        // Limpar qualquer resíduo do Leaflet
+        containerRef.current.innerHTML = "";
+        containerRef.current.removeAttribute("_leaflet_id");
+      }
+    };
+  }, []);
+
+  return (
+    <div ref={containerRef} className="h-96 w-full overflow-hidden rounded-lg border">
+      <MapContainer
+        key={jobId}
+        center={[-22.9, -43.2]}
+        zoom={10}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom
+      >
+        {children}
+      </MapContainer>
+    </div>
+  );
 }
 
 interface JobMapProps {
@@ -96,33 +134,23 @@ export function JobMap({ jobId, status }: JobMapProps) {
       <div className="flex justify-end">
         <MapFilters fc={fc} />
       </div>
-      <div
-        data-testid="job-map"
-        className="h-96 w-full overflow-hidden rounded-lg border"
-      >
-        <MapContainer
-          center={[-22.9, -43.2]}
-          zoom={10}
-          style={{ height: "100%", width: "100%" }}
-          scrollWheelZoom
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          {bounds && <FitBounds bounds={bounds} />}
-          {cities.map((f, i) => (
-            <CityLayer key={`city-${i}`} feature={f} />
-          ))}
-          {regions.map((f) => (
-            <RegionPolygon key={`region-${f.properties.region_id}`} feature={f} />
-          ))}
-          {schools.map((f, i) => (
-            <SchoolMarker key={`school-${i}`} feature={f} />
-          ))}
-          <ParticipantCluster features={participants} />
-        </MapContainer>
-      </div>
+      <LeafletMap jobId={jobId}>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {bounds && <FitBounds bounds={bounds} />}
+        {cities.map((f, i) => (
+          <CityLayer key={`city-${i}`} feature={f} />
+        ))}
+        {regions.map((f) => (
+          <RegionPolygon key={`region-${f.properties.region_id}`} feature={f} />
+        ))}
+        {schools.map((f, i) => (
+          <SchoolMarker key={`school-${i}`} feature={f} />
+        ))}
+        <ParticipantCluster features={participants} />
+      </LeafletMap>
     </div>
   );
 }
