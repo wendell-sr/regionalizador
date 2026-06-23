@@ -5,6 +5,29 @@ import type { FeatureCollection } from "./geojson";
 // e é automaticamente handled em produção com mesma origem.
 const API_URL = "/api/backend";
 
+async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit & { retries?: number; retryDelayMs?: number }
+): Promise<Response> {
+  const retries = init?.retries ?? 2;
+  const delay = init?.retryDelayMs ?? 400;
+  const { retries: _, retryDelayMs: __, ...fetchInit } = init ?? {};
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(input, fetchInit);
+    } catch (e) {
+      lastErr = e;
+      // ECONNRESET/TypeError transiente durante restart do backend
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+    }
+  }
+  throw lastErr;
+}
+
 export type JobStatus = {
   id: string;
   status: string;
@@ -56,25 +79,25 @@ export type GeocodedResult = {
 };
 
 export async function createJob(form: FormData): Promise<JobStatus> {
-  const res = await fetch(`${API_URL}/jobs`, { method: "POST", body: form });
+  const res = await fetchWithRetry(`${API_URL}/jobs`, { method: "POST", body: form });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getJob(id: string): Promise<JobStatus> {
-  const res = await fetch(`${API_URL}/jobs/${id}`, { cache: "no-store" });
+  const res = await fetchWithRetry(`${API_URL}/jobs/${id}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getJobGeojson(id: string): Promise<FeatureCollection> {
-  const res = await fetch(`${API_URL}/jobs/${id}/geojson`, { cache: "no-store" });
+  const res = await fetchWithRetry(`${API_URL}/jobs/${id}/geojson`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function suggestRegions(payload: SuggestRegionsPayload): Promise<SuggestRegionsResult> {
-  const res = await fetch(`${API_URL}/jobs/suggest-regions`, {
+  const res = await fetchWithRetry(`${API_URL}/jobs/suggest-regions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -86,19 +109,19 @@ export async function suggestRegions(payload: SuggestRegionsPayload): Promise<Su
 export async function createGeocodingJob(file: File): Promise<GeocodingJobStatus> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_URL}/jobs/geocode`, { method: "POST", body: form });
+  const res = await fetchWithRetry(`${API_URL}/jobs/geocode`, { method: "POST", body: form });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getGeocodingJob(id: string): Promise<GeocodingJobStatus> {
-  const res = await fetch(`${API_URL}/jobs/geocoding/${id}`, { cache: "no-store" });
+  const res = await fetchWithRetry(`${API_URL}/jobs/geocoding/${id}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getGeocodedResult(id: string): Promise<GeocodedResult> {
-  const res = await fetch(`${API_URL}/jobs/geocoding/${id}/geocoded`, { cache: "no-store" });
+  const res = await fetchWithRetry(`${API_URL}/jobs/geocoding/${id}/geocoded`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -130,19 +153,19 @@ export type CompareResult = {
 };
 
 export async function createCompareJob(form: FormData): Promise<CompareStatus> {
-  const res = await fetch(`${API_URL}/jobs/compare`, { method: "POST", body: form });
+  const res = await fetchWithRetry(`${API_URL}/jobs/compare`, { method: "POST", body: form });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getCompareStatus(id: string): Promise<CompareStatus> {
-  const res = await fetch(`${API_URL}/jobs/compare/${id}`, { cache: "no-store" });
+  const res = await fetchWithRetry(`${API_URL}/jobs/compare/${id}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getCompareResult(id: string): Promise<CompareResult> {
-  const res = await fetch(`${API_URL}/jobs/compare/${id}/compare`, { cache: "no-store" });
+  const res = await fetchWithRetry(`${API_URL}/jobs/compare/${id}/compare`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

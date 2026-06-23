@@ -163,7 +163,9 @@ def start_backend(port: int) -> subprocess.Popen:
 
     print(color(f"→ Backend: http://localhost:{port}", CYAN))
     return subprocess.Popen(
-        [py, "-m", "uvicorn", "app.main:app", "--reload", "--port", str(port)],
+        # Sem --reload para evitar ECONNRESET durante watchfiles
+        # Reinicie manualmente: Ctrl+C no script + python scripts/dev.py
+        [py, "-m", "uvicorn", "app.main:app", "--port", str(port)],
         cwd=BACKEND,
         env=env,
         # Permite que Ctrl+C no script mate o uvicorn (Windows)
