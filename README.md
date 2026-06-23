@@ -48,19 +48,56 @@ regionalizador/
 
 ## Quickstart
 
+### Opção 1: Script de dev (recomendado)
+
+Inicia backend + frontend em paralelo, com healthcheck, cores e cleanup automático:
+
 ```bash
-# Backend
+# Unix
+./scripts/dev.sh
+
+# Windows PowerShell
+.\scripts\dev.ps1
+
+# Windows CMD / qualquer OS com Python
+python scripts/dev.py
+
+# Instalar deps + iniciar (primeira vez)
+python scripts/dev.py --install
+
+# Rodar só um lado
+python scripts/dev.py --backend
+python scripts/dev.py --frontend
+
+# Custom port
+python scripts/dev.py --port 9000 --frontend-port 4000
+```
+
+O script:
+- Detecta o venv do backend automaticamente
+- Aguarda healthcheck antes de mostrar os logs
+- Encerramento limpo com Ctrl+C (mata ambos os processos)
+- Mostra cores em terminais que suportam
+
+### Opção 2: Manual (2 terminais)
+
+```bash
+# Terminal 1: backend
 cd backend
 python -m venv .venv && .venv\Scripts\activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload
 
-# Frontend (outro terminal)
+# Terminal 2: frontend
 cd frontend
 npm install
-npx shadcn@latest add button card input label progress
 npm run dev
 ```
+
+Acesse:
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8000
+- API docs: http://localhost:8000/docs
 
 ## CI
 
