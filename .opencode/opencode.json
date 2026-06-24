@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    ".opencode/plugins/graphify.js"
+  ],
+  "mcp": {
+    "graphify": {
+      "type": "local",
+      "command": [
+        "C:\\Users\\Wendell\\.local\\bin\\graphify-mcp.exe",
+        "C:\\Users\\Wendell\\Documents\\regionalizador\\graphify-out\\graph.json"
+      ],
+      "enabled": true
+    }
+  }
+}
