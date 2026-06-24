@@ -12,3 +12,10 @@ build/
 dist/
 *.egg-info/
 .DS_Store
+
+# Graphify — knowledge graph tooling (regenerated locally)
+graphify-out/cache/
+.graphify_labels.json
+.graphify_root
+.graphify_pipeline_state.json
+graphify-out/graph.json.lock

@@ -1,0 +1,27 @@
+{
+  "name": "regionalizador-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Regionalizador — monorepo com backend FastAPI e frontend Next.js",
+  "scripts": {
+    "dev": "python scripts/dev.py",
+    "dev:install": "python scripts/dev.py --install",
+    "dev:clean": "python scripts/dev.py --clean",
+    "test": "echo 'Run pytest in backend/ and npm test in frontend/ separately.' && exit 0",
+    "graph:build": "graphify .",
+    "graph:update": "graphify update .",
+    "graph:query": "graphify query",
+    "graph:explain": "graphify explain",
+    "graph:path": "graphify path",
+    "graph:open": "node -e \"const fs=require('fs');const p='graphify-out/graph.html';if(fs.existsSync(p)){require('child_process').exec('start ' + p);}else{console.error('Run npm run graph:build first.');process.exit(1);}\"",
+    "graph:vscode-install": "graphify install vscode"
+  },
+  "keywords": [
+    "regionalization",
+    "fastapi",
+    "nextjs",
+    "geocoding",
+    "leaflet",
+    "spec-driven"
+  ]
+}

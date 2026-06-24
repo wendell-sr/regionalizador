@@ -1,4 +1,4 @@
-# Regionalizador
+﻿# Regionalizador
 
 App para regionalização de participantes com KMeans + validação de capacidade.
 
@@ -44,7 +44,17 @@ regionalizador/
 - [0001 — Stack escolhida](history/adr/0001-stack-escolhida.md)
 - [0002 — CRS fixo EPSG:31983](history/adr/0002-crs-fixo.md)
 - [0003 — Leaflet para mapa](history/adr/0003-leaflet-escolhido.md)
-- [0004 — scikit-learn-extra para K-Medoids](history/adr/0004-scikit-learn-extra.md)
+- [0004 — K-Medoids implementado nativamente](history/adr/0004-scikit-learn-extra.md)
+
+## Knowledge Graph (Graphify)
+
+Este projeto usa [graphify](https://pypi.org/project/graphifyy/) para gerar um grafo de conhecimento consultável. Veja [docs/graphify.md](docs/graphify.md) para detalhes.
+
+```bash
+npm run graph:build    # construir grafo (usa OpenAI API)
+npm run graph:update   # reextrair AST (sem custo de API)
+npm run graph:query "como funciona o KMeans?"
+```
 
 ## Quickstart
 
